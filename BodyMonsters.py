@@ -5,6 +5,7 @@ import base64
 import replicate
 import signal
 import sys
+from PIL import Image
 
 ########################################################
 ########################################################
@@ -14,6 +15,10 @@ download_dir = "C:/Users/thewi/Documents/Collaborations/Uli/PythonPhotos/test"
 touchdesigner_directory = "C:/Users/thewi/Documents/Collaborations/Uli/bodymonstertouchdesigner"
 # A folder to keep the AI generated images
 local_directory = "C:/Users/thewi/Documents/Collaborations/Uli/testreplicate"
+# A folder to keep the AI generated images
+original_photos = "C:/Users/thewi/Documents/Collaborations/Uli/originals"
+# STRENGTH - 1 = NO IMAGE RECOGNITION, 0 = ORIGINAL IMAGE
+strength = 0.7
 ########################################################
 ########################################################
 
@@ -26,7 +31,7 @@ counter_file = 'image_counter2.txt'
 os.environ['REPLICATE_API_TOKEN'] = "r8_NFNGbqrZa4qoAd1e4eUkRaEfV637VDZ3e2uOE"
 
 # Check if the directories exist, if not, create them
-for directory in [download_dir, touchdesigner_directory, local_directory]:
+for directory in [download_dir, touchdesigner_directory, local_directory, original_photos]:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -58,6 +63,11 @@ def increment_counter(primary_letter, secondary_letter, number):
             secondary_letter = chr(ord(secondary_letter) + 1)  # Increment secondary letter
     return primary_letter, secondary_letter, number
 # Function to convert image to base64
+
+def resize_image(image_path, output_size=(512, 512)):
+    with Image.open(image_path) as img:
+        img = img.resize(output_size)
+        img.save(image_path)
 
 def update_counter(file_path, primary_letter, secondary_letter, number):
     """ Update the counter value in a file """
@@ -102,7 +112,7 @@ def process_and_save_images(image_paths):
                 "scheduler": "DDIM",
                 "num_outputs": 1,
                 "guidance_scale": 12,
-                "prompt_strength": 0.7,
+                "prompt_strength": strength,
                 "num_inference_steps": 20,
                 "disable_safety_check": True
             }
@@ -141,8 +151,17 @@ try:
                 print(f'downloading image {image_url}')
                 if download_response.status_code == 200:
                     image_path = os.path.join(download_dir, image_filename)
+                    original_image_path = os.path.join(original_photos,
+                                                       image_filename)  # Path for the original image
+
                     with open(image_path, 'wb') as file:
                         file.write(download_response.content)
+
+                    # Save a copy to the original_images directory
+                    with open(original_image_path, 'wb') as original_file:
+                        original_file.write(download_response.content)
+
+                    resize_image(image_path)  # Resize the image
                     downloaded_images.append(image_path)
                     print("downloaded image")
                 else:
