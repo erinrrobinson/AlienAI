@@ -10,7 +10,7 @@ import uuid
 ##########################################################
 ##################### FOR ULI ############################
 # LOOP LENGTH 1800 = 30 minutes in seconds, change accordingly (seconds only)
-loop_length = 1200
+loop_length = 1800
 # THE PATH TO WHERE THE PHOTOS WILL BE STORED. YOU NEED THIS IN THE TOUCHDESIGNER FILE TOO.
 images_directory = "C:/Users/thewi/Documents/Collaborations/Uli/PythonPhotos/automated/"
 # THE PATH TO WHERE THE TEXT FILE IS FOR SAVING PROMPTS
@@ -18,7 +18,7 @@ text_file = "C:/Users/thewi/Documents/Collaborations/Uli/SAVED_FILES/saved_promp
 # PATH FOR PERMANENT SAVED IMAGES
 permanent_images_directory = "C:/Users/thewi/Documents/Collaborations/Uli/SAVED_FILES/TEXT2IMAGE"
 # KEYWORDS FOR IMAGE GENERATION
-keywords = "bright yellow, weird, high definition, 8k"
+keywords = "bright yellow, yellow background, weird, high definition, 8k"
 ##########################################################
 ##########################################################
 
@@ -158,7 +158,7 @@ def clean_prompt(prompt):
 async def cleanup_on_exit():
     #start animation
     send_osc_message(0)
-    await asyncio.sleep(10)
+    await asyncio.sleep(20)
     clear_directory(images_directory)
     primary_letter, secondary_letter, number = 'a', 'a', 1  # Reset counter
     update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
@@ -231,7 +231,7 @@ async def main():
                         update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
                     else:
                         print("No new prompts and no last prompt available. Waiting 3 seconds.")
-                        await asyncio.sleep(8)
+                        await asyncio.sleep(7)
 
                 await asyncio.sleep(7)  # Wait before the next check
 
