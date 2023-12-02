@@ -6,6 +6,7 @@ import replicate
 import signal
 import sys
 from PIL import Image
+import uuid
 
 ########################################################
 ########################################################
@@ -14,9 +15,9 @@ download_dir = "C:/Users/thewi/Documents/Collaborations/Uli/PythonPhotos/test"
 # A folder on your computer that will be opened also in touchdesigner
 touchdesigner_directory = "C:/Users/thewi/Documents/Collaborations/Uli/bodymonstertouchdesigner"
 # A folder to keep the AI generated images
-local_directory = "C:/Users/thewi/Documents/Collaborations/Uli/testreplicate"
+local_directory = "C:/Users/thewi/Documents/Collaborations/Uli/SAVED_FILES/BODYMONSTERSGENERATED"
 # A folder to keep the AI generated images
-original_photos = "C:/Users/thewi/Documents/Collaborations/Uli/originals"
+original_photos = "C:/Users/thewi/Documents/Collaborations/Uli/SAVED_FILES/BODYMONSTERSORIGINALS"
 # STRENGTH - 1 = NO IMAGE RECOGNITION, 0 = ORIGINAL IMAGE
 strength = 0.7
 ########################################################
@@ -34,6 +35,15 @@ os.environ['REPLICATE_API_TOKEN'] = "r8_NFNGbqrZa4qoAd1e4eUkRaEfV637VDZ3e2uOE"
 for directory in [download_dir, touchdesigner_directory, local_directory, original_photos]:
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+
+def resize_image(image_path, output_size=(512, 512)):
+    """
+    Resize the image to a specific size and save it.
+    """
+    with Image.open(image_path) as img:
+        img = img.resize(output_size)
+        img.save(image_path)
 
 def read_counter(file_path):
     """ Read the current counter value from a file """
@@ -90,8 +100,15 @@ def delete_images_with_keyword(directory, keyword):
 def signal_handler(sig, frame):
     """Handle interrupt signals and perform cleanup."""
     print('Interrupt received, cleaning up...')
+
+    # Reset the counter
+    primary_letter, secondary_letter, number = 'a', 'a', 1
+    update_counter(counter_file, primary_letter, secondary_letter, number)
+    print("Counter reset to initial values.")
+
     delete_images_with_keyword(touchdesigner_directory, 'image')
     sys.exit(0)
+
 
 # Register the signal handler for clean interruption
 signal.signal(signal.SIGINT, signal_handler)
@@ -99,6 +116,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 def process_and_save_images(image_paths):
     for image_path in image_paths:
+        resize_image(image_path)
         image_base64 = image_to_base64(image_path)
         data_uri = f"data:image/jpg;base64,{image_base64}"
 
@@ -125,17 +143,24 @@ def process_and_save_images(image_paths):
                 response = requests.get(url)
                 if response.status_code == 200:
                     file_name = f"image_{primary_letter}{secondary_letter}{number}.png"
+
+                    # Save in the touchdesigner directory
                     with open(os.path.join(touchdesigner_directory, file_name), 'wb') as f:
                         f.write(response.content)
-                    primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter, number)
+
+                    # Save in the local directory
                     with open(os.path.join(local_directory, file_name), 'wb') as f:
                         f.write(response.content)
-                    primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter, number)
-                    print(f"Downloaded and processed image {file_name} to {touchdesigner_directory}")
+
+                    primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter,
+                                                                                 number)
+                    print(
+                        f"Downloaded and processed image {file_name} to {touchdesigner_directory} and {local_directory}")
                 else:
                     print(f"Failed to download and process image {i}")
 
         update_counter(counter_file, primary_letter, secondary_letter, number)
+
 
 try:
     while True:
@@ -151,19 +176,21 @@ try:
                 print(f'downloading image {image_url}')
                 if download_response.status_code == 200:
                     image_path = os.path.join(download_dir, image_filename)
-                    original_image_path = os.path.join(original_photos,
-                                                       image_filename)  # Path for the original image
+
+                    # Generate a unique filename for the original image
+                    unique_original_filename = f"{uuid.uuid4()}.jpg"
+                    original_image_path = os.path.join(original_photos, unique_original_filename)
 
                     with open(image_path, 'wb') as file:
                         file.write(download_response.content)
 
-                    # Save a copy to the original_images directory
+                    # Save a copy to the original_images directory with a unique filename
                     with open(original_image_path, 'wb') as original_file:
                         original_file.write(download_response.content)
 
                     resize_image(image_path)  # Resize the image
                     downloaded_images.append(image_path)
-                    print("downloaded image")
+                    print(f"Downloaded image and saved original as {unique_original_filename}")
                 else:
                     print(f"Failed to download image: {image_filename}")
 
