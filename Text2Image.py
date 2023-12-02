@@ -4,15 +4,21 @@ from computerender import Computerender
 import os
 import time
 from pythonosc.udp_client import SimpleUDPClient
-
+import uuid
 
 ##########################################################
 ##########################################################
 ##################### FOR ULI ############################
 # LOOP LENGTH 1800 = 30 minutes in seconds, change accordingly (seconds only)
-loop_length = 1800
+loop_length = 1200
 # THE PATH TO WHERE THE PHOTOS WILL BE STORED. YOU NEED THIS IN THE TOUCHDESIGNER FILE TOO.
 images_directory = "C:/Users/thewi/Documents/Collaborations/Uli/PythonPhotos/automated/"
+# THE PATH TO WHERE THE TEXT FILE IS FOR SAVING PROMPTS
+text_file = "C:/Users/thewi/Documents/Collaborations/Uli/SAVED_FILES/saved_prompts.txt"
+# PATH FOR PERMANENT SAVED IMAGES
+permanent_images_directory = "C:/Users/thewi/Documents/Collaborations/Uli/SAVED_FILES/TEXT2IMAGE"
+# KEYWORDS FOR IMAGE GENERATION
+keywords = "bright yellow, weird, high definition, 8k"
 ##########################################################
 ##########################################################
 
@@ -26,6 +32,18 @@ osc_ip = "127.0.0.1"
 osc_port = 12345
 osc_client = SimpleUDPClient(osc_ip, osc_port)
 
+
+if not os.path.exists(permanent_images_directory):
+    os.makedirs(permanent_images_directory)
+
+def save_downloaded_prompts(prompts, file_path):
+    try:
+        with open(file_path, 'a', encoding='utf-8') as file:
+            for prompt in prompts:
+                file.write(prompt + '\n')
+        print(f"Prompts successfully saved to {file_path}")
+    except IOError as e:
+        print(f"Error saving prompts to file: {e}")
 
 # Function to send OSC message
 def send_osc_message(message):
@@ -74,26 +92,38 @@ def clear_remote_file(url):
         print(f"Request to clear file failed: {e}")
 
 def write_to_local_file(content, file_path):
-    """ Write each item in the JSON array to a new line in a local file """
     try:
         items = eval(content)
-        with open(file_path, 'w') as file:
+        with open(file_path, 'w', encoding='utf-8') as file:
             for item in items:
-                file.write(item + '\n')
+                clean_item = clean_prompt(item)
+                file.write(clean_item + '\n')
     except SyntaxError as e:
         print(f"Error parsing content: {e}")
     except IOError as e:
         print(f"Error writing to file: {e}")
 
-async def generate_image(prompt, save_directory, primary_letter, secondary_letter, number):
-    """ Generate an image using Computerender and save it with a letter-numbered filename """
+async def generate_image(prompt, save_directory, permanent_directory, primary_letter, secondary_letter, number, save_to_permanent):
+    """Generate an image using Computerender and save it in two locations."""
     try:
-        file_name = f"{primary_letter}{secondary_letter}{number}"
-        print(f"Generating image: {prompt} as {file_name}.jpg")
-        img_bytes = await cr.generate(prompt, w=768, h=768)
-        file_path = os.path.join(save_directory, f'image_{file_name}.jpg')
-        with open(file_path, 'wb') as file:
+        file_name = f"{primary_letter}{secondary_letter}{number}.jpg"
+        print(f"Generating image: {prompt} as {file_name}")
+        prompt = clean_prompt(prompt)
+        img_bytes = await cr.generate(prompt + keywords, w=512, h=512)
+
+        # Save in the usual directory
+        usual_path = os.path.join(save_directory, f'image_{file_name}')
+        with open(usual_path, 'wb') as file:
             file.write(img_bytes)
+
+        # Save to the permanent directory only if indicated
+        if save_to_permanent:
+            unique_file_name = f"{uuid.uuid4()}.jpg"
+            permanent_path = os.path.join(permanent_directory, unique_file_name)
+            with open(permanent_path, 'wb') as file:
+                file.write(img_bytes)
+            print(f"Image also saved as {unique_file_name} in the permanent directory")
+
         print(f"Generated image {file_name} for prompt '{prompt}'")
     except Exception as e:
         print(f"Error generating image for prompt '{prompt}': {e}")
@@ -103,7 +133,7 @@ async def process_lines_and_get_images(file_path, save_directory, letter, number
     tasks = []
     with open(file_path, 'r') as file:
         for line in file:
-            task = generate_image(line.strip() + ", bright yellow, sci-fi", save_directory, letter, number)
+            task = generate_image(line.strip(), save_directory, letter, number)
             tasks.append(task)
             letter, number = increment_counter(letter, number)  # Increment the counter after scheduling each task
     await asyncio.gather(*tasks)
@@ -122,10 +152,13 @@ def read_counter(file_path):
         else:
             raise ValueError("Invalid counter file format")
 
+def clean_prompt(prompt):
+    # Remove surrogate characters and return a clean string
+    return prompt.encode('utf-16', 'surrogatepass').decode('utf-16')
 async def cleanup_on_exit():
     #start animation
     send_osc_message(0)
-    await asyncio.sleep(15)
+    await asyncio.sleep(10)
     clear_directory(images_directory)
     primary_letter, secondary_letter, number = 'a', 'a', 1  # Reset counter
     update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
@@ -156,20 +189,18 @@ def increment_counter(primary_letter, secondary_letter, number):
     return primary_letter, secondary_letter, number
 
 
-
-
-
 # Main function with repeated process and cleanup on interruption
 async def main():
     primary_letter, secondary_letter, number = read_counter(COUNTER_FILE_PATH)
-    last_prompt = None  # Variable to store the last prompt
+    last_prompt = None
+    processed_prompts = set()  # Set to keep track of processed prompts
 
     try:
         while True:  # Outer loop for restarting the process
             start_time = time.time()
-            while True:  # Inner loop for 30-minute cycles
+            while True:  # Inner loop for loop_length cycles
                 current_time = time.time()
-                if current_time - start_time >= loop_length:  # 1800 seconds = 30 minutes
+                if current_time - start_time >= loop_length:
                     await cleanup_on_exit()
                     break  # Break out of the inner loop to restart the image generation process
 
@@ -181,21 +212,28 @@ async def main():
                     with open(LOCAL_FILE_PATH, 'r') as file:
                         prompts_to_process = [line.strip() for line in file if line.strip()]
 
-                if prompts_to_process:
-                    for prompt in prompts_to_process:
-                        await generate_image(prompt, images_directory, primary_letter, secondary_letter, number)
-                        primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter, number)
-                        last_prompt = prompt
-                    update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
-                elif last_prompt:
-                    await generate_image(last_prompt, images_directory, primary_letter, secondary_letter, number)
-                    primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter, number)
-                    update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
-                else:
-                    print("No new prompts and no last prompt available. Waiting 3 seconds.")
-                    await asyncio.sleep(3)
+                    if prompts_to_process:
+                        # Save downloaded prompts
+                        save_downloaded_prompts(prompts_to_process, text_file)
 
-                await asyncio.sleep(7)
+                        for prompt in prompts_to_process:
+                            # Check if the prompt is new and should be saved to permanent directory
+                            save_to_permanent = prompt not in processed_prompts
+                            processed_prompts.add(prompt)
+
+                            await generate_image(prompt, images_directory, permanent_images_directory, primary_letter, secondary_letter, number, save_to_permanent)
+                            primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter, number)
+                            last_prompt = prompt
+                        update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
+                    elif last_prompt:
+                        await generate_image(last_prompt, images_directory, permanent_images_directory, primary_letter, secondary_letter, number, False)  # False since it's not the first occurrence
+                        primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter, number)
+                        update_counter(COUNTER_FILE_PATH, primary_letter, secondary_letter, number)
+                    else:
+                        print("No new prompts and no last prompt available. Waiting 3 seconds.")
+                        await asyncio.sleep(8)
+
+                await asyncio.sleep(7)  # Wait before the next check
 
             # Reset primary_letter, secondary_letter, number after cleanup
             primary_letter, secondary_letter, number = 'a', 'a', 1
@@ -204,7 +242,6 @@ async def main():
         print("Script interrupted by user.")
     finally:
         await cleanup_on_exit()
-
 
 try:
     asyncio.run(main())
