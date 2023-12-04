@@ -142,25 +142,28 @@ def process_and_save_images(image_paths):
             for i, url in enumerate(output, start=1):
                 response = requests.get(url)
                 if response.status_code == 200:
-                    file_name = f"image_{primary_letter}{secondary_letter}{number}.png"
+                    # Counter-based filename for touchdesigner_directory
+                    counter_file_name = f"image_{primary_letter}{secondary_letter}{number}.png"
+
+                    # Random string filename for local_directory
+                    random_file_name = f"{uuid.uuid4()}.png"
 
                     # Save in the touchdesigner directory
-                    with open(os.path.join(touchdesigner_directory, file_name), 'wb') as f:
+                    with open(os.path.join(touchdesigner_directory, counter_file_name), 'wb') as f:
                         f.write(response.content)
 
-                    # Save in the local directory
-                    with open(os.path.join(local_directory, file_name), 'wb') as f:
+                    # Save in the local directory with a random filename
+                    with open(os.path.join(local_directory, random_file_name), 'wb') as f:
                         f.write(response.content)
 
                     primary_letter, secondary_letter, number = increment_counter(primary_letter, secondary_letter,
                                                                                  number)
                     print(
-                        f"Downloaded and processed image {file_name} to {touchdesigner_directory} and {local_directory}")
+                        f"Downloaded and processed image {counter_file_name} to {touchdesigner_directory} and {random_file_name} to {local_directory}")
                 else:
                     print(f"Failed to download and process image {i}")
 
         update_counter(counter_file, primary_letter, secondary_letter, number)
-
 
 try:
     while True:
